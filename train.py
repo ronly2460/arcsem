@@ -27,41 +27,17 @@ from icecream import ic
 from PIL import Image
 from tqdm import tqdm
 
+import wandb
 from arguments import ModelParams, OptimizationParams, PipelineParams
 from gaussian_renderer import network_gui, render
+from ref_loss import NNFMLoss
 from scene import GaussianModel, Scene
 from utils.general_utils import safe_state
 from utils.image_utils import psnr, render_net_image
 from utils.loss_utils import l1_loss, ssim
 
-sys.path.append("/home/hpc/iwi9/iwi9007h/gaussian-splatting")
-from ref_loss import NNFMLoss
-
-# Load Depth Anything Model
-sys.path.append("/home/hpc/iwi9/iwi9007h/Ref-NPR/Depth-Anything")
-from depth_anything.dpt import DepthAnything
-
-sys.path.append("/home/hpc/iwi9/iwi9007h/gaussian-splatting/utils")
-import wandb
-
-from utils.generate_depth import generate_depth
-
-
-def write_command(args):
-    model_params = lp.extract(args)
-    command = " ".join(sys.argv)
-
-    file_path = os.path.join(model_params.model_path, "command_log.txt")
-    print(file_path)
-
-    with open(file_path, "a") as file:
-        # get folder name
-        file.write(command + "\n")
-
-    exp_name = os.path.basename(os.path.normpath(model_params.model_path))
-    with open("command_log.txt", "a") as file:
-        # get folder name
-        file.write(exp_name + " " + command + "\n\n")
+# TODO: please change this to your own folder
+SHARED_FOLDER = "/home/hpc/iwi9/iwi9007h/Ref-NPR/matija"
 
 
 def get_size(resolution: int):
@@ -72,15 +48,10 @@ def get_size(resolution: int):
     else:
         raise ValueError(f"Resolution {resolution} not supported")
 
-    # if resolution == 1:
-    #     return (3, 2048, 3072), (1, 1920, 2800)
-    # else:
-    #     return (3, 512, 768), (1, 480, 700)
-
 
 def save_img(img: np.array, exp_name: str, name: str, is_depth: bool = False) -> None:
     print("saving")
-    save_path = os.path.join("/home/hpc/iwi9/iwi9007h/2d-gaussian-splatting/outputs/imgs", exp_name, name + ".png")
+    save_path = os.path.join(SHARED_FOLDER, "outputs/imgs", exp_name, name + ".png")
     # makeir
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -122,7 +93,7 @@ def load_style_imgs(config_path, cams, mask_size):
         style_dict = json.load(fp)
 
     for i in range(len(style_dict["style_img"])):
-        path = os.path.join("/home/hpc/iwi9/iwi9007h/Ref-NPR", style_dict["style_img"][i])
+        path = os.path.join(style_dict["style_img"][i])
         style_image = np.array(Image.open(path).convert("RGB")) / 255.0
         style_image = torch.tensor(style_image, dtype=torch.float64).cuda().permute(2, 0, 1)
 
@@ -134,14 +105,14 @@ def load_style_imgs(config_path, cams, mask_size):
             style_image = style_image[:, style_cam.gt_alpha_mask == True].reshape(3, mask_size[1], mask_size[2]).float()
 
         style_image_gray = style_cam.original_image.cuda()
-        ic(style_image_gray.shape)
+        # ic(style_image_gray.shape)
 
         if style_cam.gt_alpha_mask is not None:
             # breakpoint()
             style_image_gray = (
                 style_image_gray[:, style_cam.gt_alpha_mask == True].reshape(3, mask_size[1], mask_size[2]).float()
             )
-        ic(style_image_gray.shape)
+        # ic(style_image_gray.shape)
 
         style_image = style_image.permute(1, 2, 0)
         style_image_gray = style_image_gray.unsqueeze(0)
@@ -181,13 +152,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         project=args.dataset,
         mode="online",
         name=f"{Path(scene.model_path).name}",
-        dir="/home/hpc/iwi9/iwi9007h/2d-gaussian-splatting/outputs/wanb",
+        dir=SHARED_FOLDER + "/wandb",
     )
 
     if opt.train_color and "depth_loss" in args.loss_names:
-        depth_anything = (
-            DepthAnything.from_pretrained("LiheYoung/depth_anything_{:}14".format("vitl")).to("cuda").eval()
-        )
+        raise ValueError("DepthAnything is not available")
 
     image_size, mask_size = get_size(args.resolution)
 
@@ -199,7 +168,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     if args.train_color:
         cams = scene.getTrainCameras().copy()
-        config_path = f"/home/hpc/iwi9/iwi9007h/Ref-NPR/data/ref_case/{args.ref_case}/data_config.json"
+        config_path = os.path.join(SHARED_FOLDER, f"{args.ref_case}/data_config.json")
         style_imgs, style_imgs_gray, style_cams_idx = load_style_imgs(config_path, cams, mask_size)
         ic(style_imgs_gray[0].shape)
 
@@ -207,7 +176,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if args.dataset == "pollen":
                 style_imgs_tmp = [resize_img(img, mask_size, factor) for img in style_imgs]
                 style_imgs_gray_tmp = [resize_img(img, mask_size, factor) for img in style_imgs_gray]
-                ic(style_imgs_gray_tmp[0].shape, style_imgs_tmp[0].shape)
+                # ic(style_imgs_gray_tmp[0].shape, style_imgs_tmp[0].shape)
                 nnfm_loss_fn.preload_golden_template(style_imgs_gray_tmp, style_imgs_tmp, blocks=opt.vgg_blocks)
             elif args.dataset == "caterpillar":
                 new_size = (3, style_imgs[0].shape[0], style_imgs[0].shape[1])
@@ -224,14 +193,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             elif args.dataset == "caterpillar":
                 new_size = (3, style_imgs[0].shape[0], style_imgs[0].shape[1])
                 style_imgs = [resize_img(img, new_size, 1) for img in style_imgs]
-                ic(style_imgs[0].shape, style_imgs_gray[0].shape)
+                # ic(style_imgs[0].shape, style_imgs_gray[0].shape)
                 style_imgs = [img.float() for img in style_imgs]
                 style_imgs_gray = [img.float() for img in style_imgs_gray]
                 nnfm_loss_fn.preload_golden_template(style_imgs_gray, style_imgs, blocks=opt.vgg_blocks)
 
         # load related_rays
-        corr_path = f"/home/hpc/iwi9/iwi9007h/Ref-NPR/exps/refnpr/previous_paper/{args.ref_case}/color_corr.pt"
-        corr_path = f"/home/hpc/iwi9/iwi9007h/Ref-NPR/exps/refnpr/{args.ref_case}/color_corr.pt"
+        corr_path = os.path.join(SHARED_FOLDER, f"{args.ref_case}/color_corr.pt")
         related_rays_gt = torch.load(corr_path).reshape(32, image_size[1], image_size[2], 3).permute(0, 3, 1, 2).cuda()
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -329,28 +297,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gt_image_gray = torchvision.transforms.functional.rgb_to_grayscale(gt_image, num_output_channels=3)
 
                 if "depth_loss" in args.loss_names:
-                    depth_pred = generate_depth(
-                        pred_image_gray.permute(1, 2, 0).detach().cpu().numpy(),
-                        "cuda",
-                        mask_size[1],
-                        mask_size[2],
-                        depth_anything,
-                    )
-                    depth_gt = generate_depth(
-                        gt_image_gray.permute(1, 2, 0).detach().cpu().numpy(),
-                        "cuda",
-                        mask_size[1],
-                        mask_size[2],
-                        depth_anything,
-                    )
+                    raise ValueError("DepthAnything is not available")
                 else:
                     depth_pred = None
                     depth_gt = None
 
                 if args.resolution == 1:
                     scale_factor = 1 / factor
-                    # ic(scale_factor)
-                    # breakpoint()
                     resize_lambda = lambda x: F.interpolate(
                         x, scale_factor=scale_factor, mode="bilinear", align_corners=False
                     )
@@ -481,8 +434,6 @@ def prepare_output_and_logger(args):
     os.makedirs(args.model_path, exist_ok=True)
     with open(os.path.join(args.model_path, "cfg_args"), "w") as cfg_log_f:
         cfg_log_f.write(str(Namespace(**vars(args))))
-
-    write_command(args)
 
     # Create Tensorboard writer
     tb_writer = None

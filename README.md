@@ -18,6 +18,13 @@ pip install wandb
 wandb login
 ```
 
+Please change the path.
+* train.py
+```
+# TODO: please change this to your own folder
+SHARED_FOLDER = "/home/hpc/iwi9/iwi9007h/Ref-NPR/matija"
+```
+
 # commands
 ```
 # For tes run.
