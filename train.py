@@ -65,13 +65,17 @@ def write_command(args):
 
 
 def get_size(resolution: int):
-    # return (3, 256, 384), (3, 256, 384)
-    return (3, 2048, 3072), (3, 2048, 3072)
-
     if resolution == 1:
-        return (3, 2048, 3072), (1, 1920, 2800)
-    else:
+        return (3, 2048, 3072), (3, 2048, 3072)
+    elif resolution == 4:
         return (3, 512, 768), (1, 480, 700)
+    else:
+        raise ValueError(f"Resolution {resolution} not supported")
+
+    # if resolution == 1:
+    #     return (3, 2048, 3072), (1, 1920, 2800)
+    # else:
+    #     return (3, 512, 768), (1, 480, 700)
 
 
 def save_img(img: np.array, exp_name: str, name: str, is_depth: bool = False) -> None:
@@ -126,12 +130,14 @@ def load_style_imgs(config_path, cams, mask_size):
         style_cam = cams[cam_idx]
 
         if style_cam.gt_alpha_mask is not None:
+            # breakpoint()
             style_image = style_image[:, style_cam.gt_alpha_mask == True].reshape(3, mask_size[1], mask_size[2]).float()
 
         style_image_gray = style_cam.original_image.cuda()
         ic(style_image_gray.shape)
 
         if style_cam.gt_alpha_mask is not None:
+            # breakpoint()
             style_image_gray = (
                 style_image_gray[:, style_cam.gt_alpha_mask == True].reshape(3, mask_size[1], mask_size[2]).float()
             )
@@ -212,6 +218,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 nnfm_loss_fn.preload_golden_template(style_imgs_gray_tmp, style_imgs_tmp, blocks=opt.vgg_blocks)
         else:
             if args.dataset == "pollen":
+                style_imgs_tmp = [img for img in style_imgs]
+                style_imgs_gray_tmp = [img for img in style_imgs_gray]
                 nnfm_loss_fn.preload_golden_template(style_imgs_gray_tmp, style_imgs_tmp, blocks=opt.vgg_blocks)
             elif args.dataset == "caterpillar":
                 new_size = (3, style_imgs[0].shape[0], style_imgs[0].shape[1])
@@ -224,7 +232,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # load related_rays
         corr_path = f"/home/hpc/iwi9/iwi9007h/Ref-NPR/exps/refnpr/previous_paper/{args.ref_case}/color_corr.pt"
         corr_path = f"/home/hpc/iwi9/iwi9007h/Ref-NPR/exps/refnpr/{args.ref_case}/color_corr.pt"
-        related_rays_gt = torch.load(corr_path).reshape(25, image_size[1], image_size[2], 3).permute(0, 3, 1, 2).cuda()
+        related_rays_gt = torch.load(corr_path).reshape(32, image_size[1], image_size[2], 3).permute(0, 3, 1, 2).cuda()
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")

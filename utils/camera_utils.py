@@ -8,9 +8,10 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-import torch
-from scene.cameras import Camera
 import numpy as np
+import torch
+
+from scene.cameras import Camera
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
 
@@ -20,7 +21,8 @@ def loadCam(args, id, cam_info, resolution_scale):
     orig_w, orig_h = cam_info.image.size
 
     if args.resolution in [1, 2, 4, 8]:
-        resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
+        # resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
+        resolution = round(orig_w), round(orig_h)
     else:  # should be a type that converts to float
         if args.resolution == -1:
             if orig_w > 1600:
