@@ -1,5 +1,8 @@
 
 # install
+* You can skip at the beggining.
+if you have errors about those packages.
+
 ```
 mkdir submodules
 cd submodules
