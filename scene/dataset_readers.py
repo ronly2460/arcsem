@@ -395,7 +395,7 @@ def readCamerasFromRealityCapture(path, resolution):
     elif resolution == 4:
         calib_path = os.path.join(path, "Rdy2Use", "down4", "calib", "rc_undist", "torch-ngp")
     else:
-        calib_path = os.path.join(path, "Rdy2Use", "down4", "calib", "rc_undist", "torch-ngp")
+        raise ValueError(f"Resolution {resolution} not supported")
 
     with open(os.path.join(calib_path, "transforms.json"), "r") as fp:
         meta = json.load(fp)
